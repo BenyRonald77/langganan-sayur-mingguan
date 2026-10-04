@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Catatan: Prisma 5.22 + SQLite tidak mendukung tipe Json.
+// Field JSON disimpan sebagai String (JSON-encoded) dan di-parse/stringify di boundary API.
+
+model Paket {
+  id             Int         @id @default(autoincrement())
+  nama           String
+  deskripsi      String      @default("")
+  items          String      @default("[]") // JSON-encoded array nama sayur
+  hargaMingguan  Int
+  hariPengiriman String      // nama hari Indonesia, mis. "Sabtu"
+  aktif          Boolean     @default(true)
+  langganan      Langganan[]
+  orders         Order[]
+}
+
+model Pelanggan {
+  id        Int         @id @default(autoincrement())
+  nama      String
+  telepon   String
+  alamat    String      @default("")
+  catatan   String      @default("")
+  langganan Langganan[]
+}
+
+model Langganan {
+  id           Int          @id @default(autoincrement())
+  pelangganId  Int
+  paketId      Int
+  tanggalMulai String // YYYY-MM-DD
+  status       String       @default("AKTIF") // AKTIF | PAUSE | BERHENTI
+  createdAt    String       @default("")
+  pelanggan    Pelanggan    @relation(fields: [pelangganId], references: [id])
+  paket        Paket        @relation(fields: [paketId], references: [id])
+  skips        SkipMinggu[]
+  orders       Order[]
+  penyesuaian  Penyesuaian[]
+}
+
+model SkipMinggu {
+  id           Int       @id @default(autoincrement())
+  langgananId  Int
+  minggu       String // YYYY-MM-DD (Senin minggu yang di-skip)
+  createdAt    String    @default("")
+  langganan    Langganan @relation(fields: [langgananId], references: [id])
+
+  @@unique([langgananId, minggu])
+}
+
+model Order {
+  id            Int          @id @default(autoincrement())
+  langgananId   Int
+  minggu        String // YYYY-MM-DD (Senin)
+  paketId       Int
+  namaPaket     String // snapshot nama paket saat order dibuat
+  hargaSnapshot Int
+  tanggalKirim  String // YYYY-MM-DD
+  statusOrder   String       @default("TERJADWAL") // TERJADWAL | DIKIRIM | DIBATALKAN
+  statusBayar   String       @default("BELUM_BAYAR") // BELUM_BAYAR | LUNAS | GAGAL
+  reminderStage Int          @default(0) // 0=belum, 1=H+1, 2=H+3, 3=H+7
+  createdAt     String       @default("")
+  langganan     Langganan    @relation(fields: [langgananId], references: [id])
+  paket         Paket        @relation(fields: [paketId], references: [id])
+  pembayaran    Pembayaran[]
+  penyesuaian   Penyesuaian[]
+
+  @@unique([langgananId, minggu])
+}
+
+model Pembayaran {
+  id         Int    @id @default(autoincrement())
+  orderId    Int
+  tanggal    String // YYYY-MM-DD
+  jumlah     Int
+  metode     String @default("simulasi")
+  status     String // LUNAS | GAGAL
+  keterangan String @default("")
+  order      Order  @relation(fields: [orderId], references: [id])
+}
+
+model Penyesuaian {
+  id           Int       @id @default(autoincrement())
+  langgananId  Int
+  orderId      Int?
+  tipe         String // PRORATA
+  jumlah       Int // positif = tagihan tambahan, negatif = kredit
+  keterangan   String    @default("")
+  tanggal      String // YYYY-MM-DD
+  langganan    Langganan @relation(fields: [langgananId], references: [id])
+  order        Order?    @relation(fields: [orderId], references: [id])
+}
